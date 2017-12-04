@@ -18,39 +18,36 @@
                   (apply min))]
     (+ i diff)))
 
-(defn- next-cell [cells [y x]]
-  (case [(boolean (get cells [y (+ x 1)]))
-         (boolean (get cells [(+ y 1) x]))
-         (boolean (get cells [y (- x 1)]))
-         (boolean (get cells [(- y 1) x]))]
-    ([true  false false false]
-     [true  true  false false])
-    [(- y 1) x]
+(defn- next-pos [squares [y x]]
+  (letfn [(filled? [pos]
+            (boolean (get squares pos)))]
+    (case (map filled? [[y (+ x 1)] [(+ y 1) x] [y (- x 1)] [(- y 1) x]])
+      ([true  false false false]
+       [true  true  false false])
+      [(- y 1) x]
 
-    ([false true  false false]
-     [false true  true  false])
-    [y (+ x 1)]
+      ([false true  false false]
+       [false true  true  false])
+      [y (+ x 1)]
 
-    ([false false true  false]
-     [false false true  true ])
-    [(+ y 1) x]
+      ([false false true  false]
+       [false false true  true ])
+      [(+ y 1) x]
 
-    ([false false false true ]
-     [true  false false true ])
-    [y (- x 1)]))
+      ([false false false true ]
+       [true  false false true ])
+      [y (- x 1)])))
 
-(defn- fill-cell [cells [y x :as pos]]
-  (->> (for [dy [-1 0 1]
-             dx [-1 0 1]
+(defn- square-value [squares [y x :as pos]]
+  (->> (for [dy [-1 0 1], dx [-1 0 1]
              :when (and (not (and (= dy 0) (= dx 0))))]
-         (get cells [(+ y dy) (+ x dx)] 0))
-       (apply +)
-       (assoc cells pos)))
+         (get squares [(+ y dy) (+ x dx)] 0))
+       (apply +)))
 
 (defn solve2 [n]
-  (loop [cells {[0 0] 1}, pos [0 1]]
-    (let [cells (fill-cell cells pos)
-          cell (get cells pos)]
-      (if (> cell n)
-        cell
-        (recur cells (next-cell cells pos))))))
+  (loop [squares {[0 0] 1}, pos [0 1]]
+    (let [value (square-value squares pos)
+          squares' (assoc squares pos value)]
+      (if (> value n)
+        value
+        (recur squares' (next-pos squares' pos))))))
