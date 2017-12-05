@@ -5,7 +5,7 @@
 (deftest valid1?-test
   (is (valid1? "aa bb cc dd ee"))
   (is (not (valid1? "aa bb cc dd aa")))
-  (is (valid? "aa bb cc dd aaa")))
+  (is (valid1? "aa bb cc dd aaa")))
 
 (deftest valid2?-test
   (is (valid2? "abcde fghij"))
