@@ -1,32 +1,26 @@
 (ns advent-of-code-2017.day-11)
 
-(defn step-forward [pos step]
+(set! *warn-on-reflection* true)
+
+(defn step-forward [[ne nw :as pos] step]
   (case step
-    n (update pos 0 inc)
-    s (update pos 0 dec)
-    ne (update pos 1 inc)
-    sw (update pos 1 dec)
-    nw (update pos 2 inc)
-    se (update pos 2 dec)))
+    n (-> pos (update 0 inc) (update 1 inc))
+    s (-> pos (update 0 dec) (update 1 dec))
+    ne (update pos 0 inc)
+    sw (update pos 0 dec)
+    nw (update pos 1 inc)
+    se (update pos 1 dec)))
 
-(defn distance [[n ne nw]]
-  (+ (* n n) (* ne ne) (* nw nw) (* n ne) (* n nw) (- (* ne nw))))
-
-(defn count-hops [pos]
-  (loop [pos pos, hops 0]
-    (if (zero? (distance pos))
-      hops
-      (let [neighbors (for [i (range 3), delta [1 -1]]
-                        (update pos i + delta))
-            next (apply min-key distance neighbors)]
-        (recur next (inc hops))))))
+(defn hops [[ne nw]]
+  (max (Math/abs (long ne))
+       (Math/abs (long (- ne nw)))
+       (Math/abs (long nw))))
 
 (defn solve1 [steps]
-  (let [pos (reduce step-forward [0 0 0] steps)]
-    (count-hops pos)))
+  (hops (reduce step-forward [0 0] steps)))
 
 (defn solve2 [steps]
   (->> steps
-       (reductions step-forward [0 0 0])
-       (map count-hops)
+       (reductions step-forward [0 0])
+       (map hops)
        (apply max)))
