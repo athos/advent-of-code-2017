@@ -4,8 +4,9 @@
 
 (deftest do-round-test
   (is (= [3 4 2 1 0]
-         (:elems (do-round (init-state [0 1 2 3 4])
-                           [3 4 1 5])))))
+         (nth (do-round (init-state [0 1 2 3 4])
+                        [3 4 1 5])
+              0))))
 
 (deftest solve2-test
   (is (= "a2582a3a0e66e6e86e3812dcb672a272" (solve2 "")))

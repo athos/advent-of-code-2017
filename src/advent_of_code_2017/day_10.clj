@@ -1,40 +1,49 @@
 (ns advent-of-code-2017.day-10)
 
+(set! *unchecked-math* :warn-on-boxed)
+
 (defn- reverse-section [elems pos length]
-  (let [size (count elems)]
-    (transduce (comp (drop pos)
-                     (take length)
-                     (map-indexed list))
-               (completing
-                (fn [elems [i x]]
-                  (assoc elems (rem (- (+ pos length) i 1) size) x)))
-               elems
-               (cycle elems))))
+  (let [pos (long pos)
+        size (count elems)]
+    (-> (reduce (fn [es i]
+                  (let [i (long i)]
+                    (assoc! es (rem (- (+ pos (long length)) i 1) size)
+                            (nth elems (rem (+ pos i) size)))))
+                (transient elems)
+                (range length))
+        persistent!)))
 
-(defn- step [{:keys [elems pos skip]} len]
-  {:elems (reverse-section elems pos len)
-   :pos (rem (+ pos len skip) (count elems))
-   :skip (inc skip)})
-
-(defn do-round [state lengths]
-  (reduce step state lengths))
+(defn do-round [[elems pos skip] lengths]
+  (loop [lengths lengths, elems elems, pos (long pos), skip (long skip)]
+    (if (empty? lengths)
+      [elems pos skip]
+      (let [[len & lengths] lengths]
+        (recur lengths
+               (reverse-section elems pos len)
+               (rem (+ pos (long len) skip) (count elems))
+               (inc skip))))))
 
 (defn init-state
   ([] (init-state (vec (range 256))))
   ([elems]
-   {:elems elems, :pos 0, :skip 0}))
+   [elems 0 0]))
 
 (defn solve1 [lengths]
-  (:elems (do-round (init-state) lengths)))
+  (nth (do-round (init-state) lengths) 0))
 
 (defn- dense-hash [sparse-hash]
-  (->> (partition 16 sparse-hash)
-       (map #(format "%02x" (apply bit-xor %)))
-       (apply str)))
+  (into [] (comp (partition-all 16)
+                 (map #(apply bit-xor %)))
+        sparse-hash))
 
-(defn solve2 [str]
-  (let [bytes (concat (map int str) [17 31 73 47 23])
-        result (reduce (fn [state _] (do-round state bytes))
-                       (init-state)
-                       (range 64))]
-    (dense-hash (:elems result))))
+(defn knot-hash [str]
+  (let [bytes (into (mapv int str) [17 31 73 47 23])
+        [elems _ _] (reduce (fn [state _] (do-round state bytes))
+                            (init-state)
+                            (range 64))]
+    (dense-hash elems)))
+
+(defn solve2 [input]
+  (->> (knot-hash input)
+       (map #(format "%02x" %))
+       (apply str)))
