@@ -2,6 +2,14 @@
   (:require [advent-of-code-2017.day-10 :as day-10]
             [advent-of-code-2017.day-12 :as day-12]))
 
+(defn num->bits-table [nbits]
+  (reduce (fn [table n]
+            (assoc table n
+                   (mapv (fn [i] (if (bit-test n (- nbits i 1)) 1 0))
+                         (range nbits))))
+          {}
+          (range (bit-shift-left 1 nbits))))
+
 (defn safe-nth [v n]
   (when (<= 0 n (dec (count v)))
     (nth v n)))
