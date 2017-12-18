@@ -1,12 +1,70 @@
-(ns advent-of-code-2017.day-18)
+(ns advent-of-code-2017.day-18
+  (:require [clojure.spec.alpha :as s]))
+
+(defmulti instr-spec first)
+(s/def ::instr (s/multi-spec instr-spec (fn [x _] x)))
+
+(s/def ::reg symbol?)
+(s/def ::val int?)
+(s/def ::arg (s/or :reg ::reg :val ::val))
+
+(s/def ::id int?)
+
+(s/def ::active ::id)
+(s/def ::pc (s/coll-of int? :kind vector?))
+(s/def ::regs (s/coll-of (s/map-of ::reg ::val)))
+(s/def ::instrs (s/coll-of ::instr :kind vector? :kind vector?))
+
+(s/def ::env (s/keys :req-un [::active ::pc ::regs]))
+
+(defmethod instr-spec 'snd [_]
+  (s/cat :op #{'snd} :arg ::arg))
+(defmethod instr-spec 'set [_]
+  (s/cat :op #{'set} :reg ::reg :arg ::arg))
+(defmethod instr-spec 'add [_]
+  (s/cat :op #{'add} :reg ::reg :arg ::arg))
+(defmethod instr-spec 'mul [_]
+  (s/cat :op #{'mul} :reg ::reg :arg ::arg))
+(defmethod instr-spec 'mod [_]
+  (s/cat :op #{'mod} :reg ::reg :arg ::arg))
+(defmethod instr-spec 'rcv [_]
+  (s/cat :op #{'rcv} :reg ::reg))
+(defmethod instr-spec 'jgz [_]
+  (s/cat :op #{'jgz} :arg1 ::arg :arg2 ::arg))
+
+(s/fdef parse-line
+  :args (s/cat :line string?)
+  :ret ::instr)
 
 (defn parse-line [line]
   (read-string (str "[" line "]")))
+
+(s/fdef eval*
+  :args (s/cat :env ::env :x ::arg)
+  :ret ::val)
 
 (defn eval* [{:keys [active] :as env} x]
   (if (symbol? x)
     (get-in env [:regs active x] 0)
     x))
+
+(s/def ::snd-fn
+  (s/fspec :args (s/cat :env ::env :arg ::arg)
+           :ret ::env))
+(s/def ::rcv-fn
+  (s/fspec :args (s/cat :env ::env :arg ::arg)
+           :ret ::env))
+(s/def ::eval-fn
+  (s/fspec :args (s/cat :env ::env :arg ::arg)
+           :ret ::val))
+(s/def ::step-opts
+  (s/keys :req-un [::snd-fn ::rcv-fn ::eval-fn]))
+
+(s/fdef step
+  :args (s/cat :env ::env
+               :instr ::instr
+               :opts any? #_::step-opts)
+  :ret ::env)
 
 (defn step [env [op arg1 arg2] {:keys [snd-fn rcv-fn eval-fn]}]
   (let [active (:active env)
@@ -24,14 +82,35 @@
             (update-in env [:pc active] + (dec (eval-fn env arg2)))
             env))))
 
+(s/fdef init-env
+  :args (s/cat :n int?)
+  :ret ::env)
+
 (defn init-env [n]
   {:active 0
    :pc (vec (repeat n 0))
    :regs (vec (repeat n {}))})
 
+(s/fdef exits?
+  :args (s/cat :env ::env :id ::id :instrs ::instrs)
+  :ret boolean?)
+
 (defn exits? [env id instrs]
   (let [pc (get-in env [:pc id])]
     (or (neg? pc) (>= pc (count instrs)))))
+
+(s/def ::finished?
+  (s/fspec :args (s/cat :env ::env :instrs ::instrs)
+           :ret boolean?))
+(s/def ::schedule
+  (s/fspec :args (s/cat :env ::env :instrs ::instrs)
+           :ret ::env))
+(s/def ::opts
+  (s/merge ::step-opts (s/keys :req-un [::finished? ::schedule])))
+
+(s/fdef run
+  :args (s/cat :env ::env :instrs ::instrs :opts ::opts)
+  :ret ::env)
 
 (defn run [env instrs {:keys [finished? schedule] :as opts}]
   (loop [env env]
@@ -40,6 +119,8 @@
       (let [{:keys [pc active] :as env} (schedule env instrs)
             instr (nth instrs (nth pc active))]
         (recur (step env instr opts))))))
+
+(s/def finished? ::finished?)
 
 (defn finished? [env instrs]
   (every? #(exits? env % instrs) (range (count (:pc env)))))
@@ -61,10 +142,18 @@
                     ret)))
    :schedule (fn [env _] env)})
 
+(s/fdef solve1
+  :args (s/cat :lines (s/every string?))
+  :ret ::env)
+
 (defn solve1 [lines]
   (let [env (init-env 1)
         instrs (mapv parse-line lines)]
     (run env instrs (part1-opts))))
+
+(s/fdef blocks?
+  :args (s/cat :env ::env :id ::id :instrs ::instrs)
+  :ret boolean?)
 
 (defn blocks? [env id instrs]
   (let [pc (get-in env [:pc id])]
@@ -73,8 +162,14 @@
           (and (= op 'rcv)
                (empty? (get-in env [:queue id])))))))
 
+(s/fdef deadlock?
+  :args (s/cat :env ::env :instrs ::instrs)
+  :ret boolean?)
+
 (defn deadlock? [env instrs]
   (every? #(blocks? env % instrs) [0 1]))
+
+(s/def schedule-next ::schedule)
 
 (defn schedule-next [{:keys [active] :as env} instrs]
   (let [n (count (:pc env))
@@ -110,12 +205,20 @@
      :finished? deadlock?
      :schedule schedule-next}))
 
+(s/fdef solve2
+  :args (s/cat :lines (s/every string?))
+  :ret ::env)
+
 (defn solve2 [lines]
   (let [env (init-env 2)
         instrs (mapv parse-line lines)]
     (run env instrs (part2-opts))))
 
 (comment
+
+  (require '[clojure.spec.test.alpha :as st])
+  (st/instrument `step)
+  (st/unstrument)
 
   (run (init-env 1)
        '[[set a 1]
