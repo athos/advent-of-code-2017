@@ -11,11 +11,11 @@
 (s/def ::id int?)
 
 (s/def ::active ::id)
+(s/def ::instrs (s/coll-of ::instr :kind vector? :kind vector?))
 (s/def ::pc (s/coll-of int? :kind vector?))
 (s/def ::regs (s/coll-of (s/map-of ::reg ::val)))
-(s/def ::instrs (s/coll-of ::instr :kind vector? :kind vector?))
 
-(s/def ::env (s/keys :req-un [::active ::pc ::regs]))
+(s/def ::env (s/keys :req-un [::active ::instrs ::pc ::regs]))
 
 (defmethod instr-spec 'snd [_]
   (s/cat :op #{'snd} :arg ::arg))
@@ -83,47 +83,48 @@
             env))))
 
 (s/fdef init-env
-  :args (s/cat :n int?)
+  :args (s/cat :n int? :instrs ::instrs)
   :ret ::env)
 
-(defn init-env [n]
+(defn init-env [n instrs]
   {:active 0
+   :instrs instrs
    :pc (vec (repeat n 0))
    :regs (vec (repeat n {}))})
 
 (s/fdef exits?
-  :args (s/cat :env ::env :id ::id :instrs ::instrs)
+  :args (s/cat :env ::env :id ::id)
   :ret boolean?)
 
-(defn exits? [env id instrs]
+(defn exits? [{:keys [instrs] :as env} id]
   (let [pc (get-in env [:pc id])]
     (or (neg? pc) (>= pc (count instrs)))))
 
 (s/def ::finished?
-  (s/fspec :args (s/cat :env ::env :instrs ::instrs)
+  (s/fspec :args (s/cat :env ::env)
            :ret boolean?))
 (s/def ::schedule
-  (s/fspec :args (s/cat :env ::env :instrs ::instrs)
+  (s/fspec :args (s/cat :env ::env)
            :ret ::env))
 (s/def ::opts
   (s/merge ::step-opts (s/keys :req-un [::finished? ::schedule])))
 
 (s/fdef run
-  :args (s/cat :env ::env :instrs ::instrs :opts ::opts)
+  :args (s/cat :env ::env :opts any? #_::opts)
   :ret ::env)
 
-(defn run [env instrs {:keys [finished? schedule] :as opts}]
+(defn run [env {:keys [finished? schedule] :as opts}]
   (loop [env env]
-    (if (finished? env instrs)
+    (if (finished? env)
       env
-      (let [{:keys [pc active] :as env} (schedule env instrs)
-            instr (nth instrs (nth pc active))]
+      (let [{:keys [pc active] :as env} (schedule env)
+            instr (nth (:instrs env) (nth pc active))]
         (recur (step env instr opts))))))
 
 (s/def finished? ::finished?)
 
-(defn finished? [env instrs]
-  (every? #(exits? env % instrs) (range (count (:pc env)))))
+(defn finished? [{:keys [instrs] :as env}]
+  (every? #(exits? env %) (range (count (:pc env)))))
 
 (defn part1-opts []
   {:eval-fn eval*
@@ -135,50 +136,50 @@
                          (get-in env [:played active]))
                env))
    :finished? (let [seen (atom #{})]
-                (fn [env instrs]
-                  (let [ret (or (finished? env instrs)
+                (fn [{:keys [instrs] :as env}]
+                  (let [ret (or (finished? env)
                                 (contains? @seen env))]
                     (swap! seen conj env)
                     ret)))
-   :schedule (fn [env _] env)})
+   :schedule identity})
 
 (s/fdef solve1
   :args (s/cat :lines (s/every string?))
   :ret ::env)
 
 (defn solve1 [lines]
-  (let [env (init-env 1)
-        instrs (mapv parse-line lines)]
-    (run env instrs (part1-opts))))
+  (let [instrs (mapv parse-line lines)
+        env (init-env 1 instrs)]
+    (run env (part1-opts))))
 
 (s/fdef blocks?
-  :args (s/cat :env ::env :id ::id :instrs ::instrs)
+  :args (s/cat :env ::env :id ::id)
   :ret boolean?)
 
-(defn blocks? [env id instrs]
+(defn blocks? [{:keys [instrs] :as env} id]
   (let [pc (get-in env [:pc id])]
-    (or (exits? env id instrs)
+    (or (exits? env id)
         (let [[op] (nth instrs pc)]
           (and (= op 'rcv)
                (empty? (get-in env [:queue id])))))))
 
 (s/fdef deadlock?
-  :args (s/cat :env ::env :instrs ::instrs)
+  :args (s/cat :env ::env)
   :ret boolean?)
 
-(defn deadlock? [env instrs]
-  (every? #(blocks? env % instrs) [0 1]))
+(defn deadlock? [env]
+  (every? #(blocks? env %) [0 1]))
 
 (s/def schedule-next ::schedule)
 
-(defn schedule-next [{:keys [active] :as env} instrs]
+(defn schedule-next [{:keys [active] :as env}]
   (let [n (count (:pc env))
         next (transduce (comp (drop-while #(< % active))
                               (take n))
                         (completing
                          (fn [_ i]
-                           (when (and (not (exits? env i instrs))
-                                      (not (blocks? env i instrs)))
+                           (when (and (not (exits? env i))
+                                      (not (blocks? env i)))
                              (reduced i))))
                         nil
                         (cycle (range n)))]
@@ -210,37 +211,35 @@
   :ret ::env)
 
 (defn solve2 [lines]
-  (let [env (init-env 2)
-        instrs (mapv parse-line lines)]
-    (run env instrs (part2-opts))))
+  (let [instrs (mapv parse-line lines)
+        env (init-env 2 instrs)]
+    (run env (part2-opts))))
 
 (comment
 
   (require '[clojure.spec.test.alpha :as st])
-  (st/instrument `step)
+  (st/instrument)
   (st/unstrument)
 
-  (run (init-env 1)
-       '[[set a 1]
-         [add a 2]
-         [mul a a]
-         [mod a 5]
-         [snd a]
-         [set a 0]
-         [rcv a]
-         [jgz a -1]
-         [set a 1]
-         [jgz a -2]]
+  (run (init-env 1 '[[set a 1]
+                     [add a 2]
+                     [mul a a]
+                     [mod a 5]
+                     [snd a]
+                     [set a 0]
+                     [rcv a]
+                     [jgz a -1]
+                     [set a 1]
+                     [jgz a -2]])
        (part1-opts))
 
-  (run (init-env 2)
-       '[[snd 1]
-         [snd 2]
-         [snd p]
-         [rcv a]
-         [rcv b]
-         [rcv c]
-         [rcv d]]
+  (run (init-env 2 '[[snd 1]
+                     [snd 2]
+                     [snd p]
+                     [rcv a]
+                     [rcv b]
+                     [rcv c]
+                     [rcv d]])
        (part2-opts))
 
   )
